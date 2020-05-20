@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+//	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	//	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -89,48 +90,53 @@ func main() {
 		fmt.Printf("error: %v\n", err)
 		panic("Failed to validate matching query")
 	}
-	var its []*ec2.InstanceTypeInfo
-	err = ec2Client.DescribeInstanceTypesPages(
-		&typeInput,
-		func(page *ec2.DescribeInstanceTypesOutput, lastPage bool) bool{
-			for _,v := range page.InstanceTypes {
-				its = append(its, v)
-			}
-			if lastPage {
-				return false
-			}
-			return true
-		})
+	its, err := filterInstanceTypes(typeInput, ec2Client)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
-		panic("Failed to return matching query")
 	}
-	for _, v := range its {
+	var ots []string
+	for k, v := range its {
 		fmt.Printf("Name: %s\nRam: %d\nVcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
-	}
-/*
-	fmt.Printf("Number of matches: %d\n\n", len(matchedInstances.InstanceTypes))
-	for _,v := range matchedInstances.InstanceTypes {
-		fmt.Printf("Name: %s\nRam: %d\nVcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
+		ots = append(ots, k)
 	}
 
-	if len(matchedInstances.InstanceTypes) == 0 {
-		fmt.Println("No matches for filters")
+	offeringFilters := []*ec2.Filter{
+				&ec2.Filter{
+					Name: aws.String("location"),
+					Values: aws.StringSlice([]string{"us-east-1c","us-east-1b"}),
+				},
+				&ec2.Filter{
+					Name: aws.String("instance-type"),
+					Values: aws.StringSlice(ots),
+				},
+			}
+	fmt.Print(offeringFilters)
+	offeringInput := ec2.DescribeInstanceTypeOfferingsInput{
+				Filters: offeringFilters,
+				LocationType: aws.String("availability-zone"),
+				MaxResults: aws.Int64(5),
+			}
+	err = offeringInput.Validate()
+	if err != nil {
+		fmt.Printf("Failed to validate offering filters: %v\n", err)
+		panic("AAAAAAHHHHH")
 	}
 
-	if matchedInstances.NextToken != nil {
-		fmt.Printf(*matchedInstances.NextToken)
+	typesInZones, err := filterInstanceTypeOfferings(offeringInput, ec2Client)
+	if err != nil {
+		fmt.Printf("Failed to retrieve offerings: %v\n", err)
+		panic("AAAAAAHHHHH")
 	}
-*/
+	fmt.Println(typesInZones)
 }
 
-func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput) (instanceTypes []*ec2.InstanceTypeInfo, e error) {
-	var its []*ec2.InstanceTypeInfo
-	err = ec2Client.DescribeInstanceTypesPages(
-		&typeInput,
+func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput, client *ec2.EC2) (instanceTypes map[string]*ec2.InstanceTypeInfo, e error) {
+	its := map[string]*ec2.InstanceTypeInfo{}
+	err := client.DescribeInstanceTypesPages(
+		&describer,
 		func(page *ec2.DescribeInstanceTypesOutput, lastPage bool) bool{
 			for _,v := range page.InstanceTypes {
-				its = append(its, v)
+				its[aws.StringValue(v.InstanceType)] = v
 			}
 			if lastPage {
 				return false
@@ -141,4 +147,24 @@ func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput) (instanceType
 		return its,err
 	}
 	return its, nil
+}
+
+func filterInstanceTypeOfferings(describer ec2.DescribeInstanceTypeOfferingsInput, client *ec2.EC2) (instanceTypeOfferings []*ec2.InstanceTypeOffering, e error) {
+	var ito []*ec2.InstanceTypeOffering
+	err := client.DescribeInstanceTypeOfferingsPages(
+		&describer,
+		func(page *ec2.DescribeInstanceTypeOfferingsOutput, lastPage bool) bool{
+//			fmt.Println(len(page.InstanceTypeOfferings))
+			for _,v := range page.InstanceTypeOfferings {
+				ito = append(ito, v)
+			}
+			if lastPage {
+				return false
+			}
+			return true
+		})
+	if err != nil {
+		return ito,err
+	}
+	return ito, nil
 }
