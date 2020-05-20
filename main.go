@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 //	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -95,15 +96,16 @@ func main() {
 		fmt.Printf("error: %v\n", err)
 	}
 	var ots []string
-	for k, v := range its {
+	for _, v := range its {
 		fmt.Printf("Name: %s\nRam: %d\nVcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
-		ots = append(ots, k)
+		ots = append(ots, aws.StringValue(v.InstanceType))
 	}
 
+	locations := []string{"us-east-1b","us-east-1c"}
 	offeringFilters := []*ec2.Filter{
 				&ec2.Filter{
 					Name: aws.String("location"),
-					Values: aws.StringSlice([]string{"us-east-1c","us-east-1b"}),
+					Values: aws.StringSlice(locations),
 				},
 				&ec2.Filter{
 					Name: aws.String("instance-type"),
@@ -128,15 +130,41 @@ func main() {
 		panic("AAAAAAHHHHH")
 	}
 	fmt.Println(typesInZones)
+
+	validTypes := map[string]*instanceType{}
+	for _, v := range typesInZones {
+		if validTypes[aws.StringValue(v.InstanceType)] == nil {
+			validTypes[aws.StringValue(v.InstanceType)] = &instanceType{
+									Name: aws.StringValue(v.InstanceType),
+									Locations: []string{aws.StringValue(v.Location)},
+									}
+		} else {
+		validTypes[aws.StringValue(v.InstanceType)].Locations = append(validTypes[aws.StringValue(v.InstanceType)].Locations, aws.StringValue(v.Location))
+		}
+	}
+
+	for k,v := range validTypes {
+		if !compareUnsortedStringSlice(locations, v.Locations){
+			delete(validTypes, k)
+		}
+	}
+	for k := range validTypes{
+		fmt.Println(k)
+	}
 }
 
-func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput, client *ec2.EC2) (instanceTypes map[string]*ec2.InstanceTypeInfo, e error) {
-	its := map[string]*ec2.InstanceTypeInfo{}
+
+type instanceType struct {
+	Name string
+	Locations []string 
+}
+func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput, client *ec2.EC2) (instanceTypes []*ec2.InstanceTypeInfo, e error) {
+	its := []*ec2.InstanceTypeInfo{}
 	err := client.DescribeInstanceTypesPages(
 		&describer,
 		func(page *ec2.DescribeInstanceTypesOutput, lastPage bool) bool{
 			for _,v := range page.InstanceTypes {
-				its[aws.StringValue(v.InstanceType)] = v
+				its = append(its,v)
 			}
 			if lastPage {
 				return false
@@ -154,7 +182,6 @@ func filterInstanceTypeOfferings(describer ec2.DescribeInstanceTypeOfferingsInpu
 	err := client.DescribeInstanceTypeOfferingsPages(
 		&describer,
 		func(page *ec2.DescribeInstanceTypeOfferingsOutput, lastPage bool) bool{
-//			fmt.Println(len(page.InstanceTypeOfferings))
 			for _,v := range page.InstanceTypeOfferings {
 				ito = append(ito, v)
 			}
@@ -168,3 +195,31 @@ func filterInstanceTypeOfferings(describer ec2.DescribeInstanceTypeOfferingsInpu
 	}
 	return ito, nil
 }
+
+func stringInSlice(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
+}
+
+func compareUnsortedStringSlice(a,b []string) bool {
+	if ( a == nil) != ( b == nil) {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+	sort.Strings(a)
+	sort.Strings(b)
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+//func typesInZones(
