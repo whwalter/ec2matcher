@@ -3,23 +3,122 @@ package main
 import (
 	"fmt"
 	"sort"
-//	"strings"
+	"log"
+	"errors"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	//	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/spf13/cobra"
 )
 
+
+// TODO: fill in instanceyTypeMatcher struct to support command line flags and settings
+type instanceTypeMatcher struct {
+	name string
+	cpu   int64
+	ram   int64
+	metal bool
+        boosted bool
+	gpu bool        
+}
+
+// TODO: fill in regionMatcher struct to support command line flags and settings
+type zoneMatcher struct {
+	zones string	
+}
+
+// TODO: fill in priceMatcher struct to support command line flags and settings
+type priceMatcher struct {
+	price int64
+	variance int64
+}
+var awsSession *session.Session
+var ec2Client *ec2.EC2
+
+var iType instanceTypeMatcher
+var zones zoneMatcher
+var prices priceMatcher
 func main() {
 
-	awsSession := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
+	if err := newRootCommand().Execute(); err != nil {
+		log.Fatal(err)
+	}
+}
 
-	ec2Client := ec2.New(awsSession)
+func newRootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "ec2typer",
+		Short: "EC2 Instance Type sourcer",
+	}
+	cobra.OnInitialize(initConfig)
+	cmd.AddCommand(newEC2TypeMatcherCommand())
+	cmd.AddCommand(newEC2ZoneMatcherCommand())
+	return cmd
+}
 
-	primaryType := aws.String("r5.8xlarge")
+func initConfig() {
+	if awsSession == nil {
+		awsSession = session.Must(session.NewSessionWithOptions(session.Options{
+			SharedConfigState: session.SharedConfigEnable,
+		}))
+	}
+
+	if ec2Client == nil {
+		ec2Client = ec2.New(awsSession)
+	}
+	zones = zoneMatcher{}
+	prices = priceMatcher{}
+}
+
+
+func newEC2TypeMatcherCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "types",
+		Short: "Matches ec2 instance types for desired specs",
+		RunE: matchEC2TypesPrintRunE,
+	}
+
+	cmd.PersistentFlags().StringP("type", "t", "", "Source type to match against")
+	cmd.PersistentFlags().Int64P("ram", "r", 0, "Ram to match against")
+	cmd.PersistentFlags().Int64P("vcpu", "c", 0, "vcpu count to match against")
+
+	return cmd
+}
+
+// TODO: this should support flags for baremetal, boosted, and gpu types for future filtering
+func matchEC2TypesPrintRunE(cmd *cobra.Command, args []string) error {
+
+	matchType, err := cmd.Flags().GetString("type")
+	if err != nil {
+		return err
+	}	
+/*
+	ram, err := cmd.Flags().GetInt64("ram")
+	if err != nil {
+		return err
+	}	
+	cpu, err := cmd.Flags().GetInt64("vcpu")
+	if err != nil {
+		return err
+	}	
+*/
+	matches,err := matchEC2Types(matchType)
+	if err != nil {
+		return err
+	}
+	for _,v := range matches {
+		fmt.Printf("Name: %s\n  Ram: %d\n  Vcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
+	}
+	return nil
+}
+
+func matchEC2Types(matchType string) ([]*ec2.InstanceTypeInfo,error) {
+
+	//primaryType := aws.String("r5.8xlarge")
+	primaryType := aws.String(matchType)
 	typeInput := ec2.DescribeInstanceTypesInput{
 		DryRun: aws.Bool(false),
 		InstanceTypes: []*string{primaryType},
@@ -27,13 +126,11 @@ func main() {
 
 	err := typeInput.Validate()
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		panic("aaaahhhh")
+		return []*ec2.InstanceTypeInfo{}, err
 	}
 	dit, err := ec2Client.DescribeInstanceTypes(&typeInput)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		panic("aaaaahhhh")
+		return []*ec2.InstanceTypeInfo{}, err
 	}
 
 	prime := dit.InstanceTypes[0]
@@ -64,23 +161,6 @@ func main() {
 					},
 		  	 },
 		   }
-/*
-	matchers := []*ec2.Filter{
-			&ec2.Filter{
-				Name: aws.String("memory-info.size-in-mib"),
-				Values: []*string{
-					aws.String(fmt.Sprint(*prime.MemoryInfo.SizeInMiB)),
-					},
-		  	 },
-			&ec2.Filter{
-				Name: aws.String("vcpu-info.default-vcpus"),
-				Values: []*string{
-					aws.String(fmt.Sprint(*prime.VCpuInfo.DefaultVCpus)),
-					},
-		  	 },
-		   }
-
-*/
 	typeInput = ec2.DescribeInstanceTypesInput{
 		DryRun: aws.Bool(false),
 		Filters: matchers,
@@ -88,28 +168,57 @@ func main() {
 	}
 	err = typeInput.Validate()
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		panic("Failed to validate matching query")
+		return []*ec2.InstanceTypeInfo{}, err
 	}
 	its, err := filterInstanceTypes(typeInput, ec2Client)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-	}
-	var ots []string
-	for _, v := range its {
-		fmt.Printf("Name: %s\nRam: %d\nVcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
-		ots = append(ots, aws.StringValue(v.InstanceType))
+		return []*ec2.InstanceTypeInfo{}, err
 	}
 
-	locations := []string{"us-east-1b","us-east-1c"}
+	return its, nil
+}
+
+func newEC2ZoneMatcherCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "zones",
+		Short: "Shows instances in a list available in listed zones",
+		Args: cobra.ExactValidArgs(2),
+		RunE: matchEC2ZonesPrintRunE,
+	}
+
+	return cmd
+}
+
+func matchEC2ZonesPrintRunE(cmd *cobra.Command, args []string) error {
+//	types := strings.Split(args[0], ",")
+	//zones := strings.Split(args[1], ",")
+	if len(args[0]) == 0 || len(args[1]) == 0 {
+		return errors.New("Comma delimited strings for desired ec2 types and zones are required")
+	}
+	fmt.Printf("%v", args)
+	matches, err := matchEC2Zones(args[0], args[1])
+	if err != nil {
+		return err
+	}	
+	for k := range matches{
+		fmt.Println(k)
+	}
+	return nil
+}
+func matchEC2Zones(types string, zones string) (map[string]*instanceType, error) {
+	validTypes := map[string]*instanceType{}
+
+	awsTypes := aws.StringSlice(strings.Split(types, ","))
+	awsZones := aws.StringSlice(strings.Split(zones, ","))
+
 	offeringFilters := []*ec2.Filter{
 				&ec2.Filter{
 					Name: aws.String("location"),
-					Values: aws.StringSlice(locations),
+					Values: awsZones,
 				},
 				&ec2.Filter{
 					Name: aws.String("instance-type"),
-					Values: aws.StringSlice(ots),
+					Values: awsTypes,
 				},
 			}
 	fmt.Print(offeringFilters)
@@ -118,20 +227,18 @@ func main() {
 				LocationType: aws.String("availability-zone"),
 				MaxResults: aws.Int64(5),
 			}
-	err = offeringInput.Validate()
+	err := offeringInput.Validate()
 	if err != nil {
-		fmt.Printf("Failed to validate offering filters: %v\n", err)
-		panic("AAAAAAHHHHH")
+		return validTypes, err
 	}
 
+	fmt.Printf("%v", offeringInput)
 	typesInZones, err := filterInstanceTypeOfferings(offeringInput, ec2Client)
 	if err != nil {
-		fmt.Printf("Failed to retrieve offerings: %v\n", err)
-		panic("AAAAAAHHHHH")
+		return validTypes, err
 	}
 	fmt.Println(typesInZones)
 
-	validTypes := map[string]*instanceType{}
 	for _, v := range typesInZones {
 		if validTypes[aws.StringValue(v.InstanceType)] == nil {
 			validTypes[aws.StringValue(v.InstanceType)] = &instanceType{
@@ -144,13 +251,11 @@ func main() {
 	}
 
 	for k,v := range validTypes {
-		if !compareUnsortedStringSlice(locations, v.Locations){
+		if !compareUnsortedStringSlice(strings.Split(zones, ","), v.Locations){
 			delete(validTypes, k)
 		}
 	}
-	for k := range validTypes{
-		fmt.Println(k)
-	}
+	return validTypes, nil
 }
 
 
@@ -222,4 +327,3 @@ func compareUnsortedStringSlice(a,b []string) bool {
 	}
 	return true
 }
-//func typesInZones(
