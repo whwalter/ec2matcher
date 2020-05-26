@@ -6,8 +6,7 @@ import (
 	"log"
 	"errors"
 	"strings"
-//	"encoding/json"
-	"reflect"
+	"encoding/json"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -27,7 +26,7 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "ec2typer",
+		Use: "ec2matcher",
 		Short: "EC2 Instance Type sourcer",
 	}
 	cobra.OnInitialize(initConfig)
@@ -332,24 +331,36 @@ func reportPricing(types []string) ( map[string]string, error) {
 		}
 		
 		for _, v := range values {
-			/*
-			b, _ := json.Marshal(v)
-			pr := ProductSpec{}
-			_ = json.Unmarshal(b, &pr)
-			fmt.Println(v)
-			fmt.Println("ProductSpec")
-			for _,z := range pr.Terms.OnDemand {
-				for _,v := range z.PriceDimensions {
-					fmt.Println(v.PricePerUnit["USD"])
-				}
+			it, p, e := parsePrice(v)
+			if e != nil {
+				return map[string]string{}, e
 			}
-			*/
-			price := parseMap("USD", v)
-			it := parseMap("instanceType", v)
-			prices[it] = price
+			prices[*it] = *p
 		}
 	}
 	return prices, nil
+}
+
+
+func parsePrice(i map[string]interface{}) (it *string, price *string, e error) {
+	b, err := json.Marshal(i)
+	if err != nil {
+		return nil,nil, err
+	}
+
+	pr := ProductSpec{}
+	err = json.Unmarshal(b, &pr)
+	if err != nil {
+		return nil,nil, err
+	}
+
+	var p string
+	for _, z := range pr.Terms.OnDemand {
+		for _, v := range z.PriceDimensions {
+			p = v.PricePerUnit["USD"]
+		}
+	}
+	return &pr.Product.Attributes.InstanceType, &p, nil
 }
 
 func filterPrices(describer pricing.GetProductsInput, client *pricing.Pricing) (pricingList []aws.JSONValue, e error) {
@@ -441,29 +452,12 @@ func compareUnsortedStringSlice(a,b []string) bool {
 	return true
 }
 
-func parseMap(name string, blob map[string]interface{}) string {
-	s := ""
-	for k := range blob {
-		if k == name {
-			return blob[k].(string)
-		}
-		v := reflect.ValueOf(blob[k])
-		if v.Kind() == reflect.Map {
-			s = parseMap(name, blob[k].(map[string]interface{}))
-			if s != "" {
-				return s
-			}
-		}
-	}
-	return s
-}
-
+// Terms - Generated from json map[string]interface{}
 type Terms struct {
 	OnDemand map[string]InstanceData
 }
-type OnDemand struct {
-	*InstanceData `json:",string"`
-}
+
+// InstanceData - Generated from json map[string]interface{}
 type InstanceData struct {
 	EffectiveDate string
 	OfferTermCode string
@@ -472,13 +466,16 @@ type InstanceData struct {
 	*TermAttributes
 }
 
+// TermAttributes - Generated from json map[string]interface{}, nil in sample data
 type TermAttributes struct {
 }
 
+// PriceDimensions - Generated from json map[string]interface{}
 type PriceDimensions struct {
 	*PriceData `json:",string"`
 }
 
+// PriceData - Generated from json map[string]interface{}
 type PriceData struct {
 	AppliesTo []string
 	BeginRange string
@@ -488,10 +485,13 @@ type PriceData struct {
 	RateCode string
 	Unit string
 }
+
+// PricePerUnit - Generated from json map[string]interface{}
 type PricePerUnit struct {
 	USD string
 }
 
+// Attributes - Generated from json map[string]interface{}
 type Attributes struct {
 	EnhancedNetworkingSupported string
 	OperatingSystem string
@@ -525,12 +525,14 @@ type Attributes struct {
 	IntelTurboAvailable string
 }
 
+// Product - Generated from json map[string]interface{}
 type Product struct {
 	ProductFamily string
 	Sku string
 	Attributes Attributes `json:"attributes"`
 }
 
+// ProductSpec - Generated from json map[string]interface{}
 type ProductSpec struct {
 	ServiceCode string
 	Terms Terms
