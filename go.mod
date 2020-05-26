@@ -1,4 +1,4 @@
-module ec2liker
+module ec2matcher
 
 go 1.13
 
