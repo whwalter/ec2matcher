@@ -470,12 +470,13 @@ func parseMap(name string, blob map[string]interface{}) string {
 	return s
 }
 
+
+// Terms - Generated from json map[string]interface{}
 type Terms struct {
 	OnDemand map[string]InstanceData
 }
-type OnDemand struct {
-	*InstanceData `json:",string"`
-}
+
+// InstanceData - Generated from json map[string]interface{}
 type InstanceData struct {
 	EffectiveDate string
 	OfferTermCode string
@@ -484,13 +485,16 @@ type InstanceData struct {
 	*TermAttributes
 }
 
+// TermAttributes - Generated from json map[string]interface{}, nil in sample data
 type TermAttributes struct {
 }
 
+// PriceDimensions - Generated from json map[string]interface{}
 type PriceDimensions struct {
 	*PriceData `json:",string"`
 }
 
+// PriceData - Generated from json map[string]interface{}
 type PriceData struct {
 	AppliesTo []string
 	BeginRange string
@@ -500,10 +504,13 @@ type PriceData struct {
 	RateCode string
 	Unit string
 }
+
+// PricePerUnit - Generated from json map[string]interface{}
 type PricePerUnit struct {
 	USD string
 }
 
+// Attributes - Generated from json map[string]interface{}
 type Attributes struct {
 	EnhancedNetworkingSupported string
 	OperatingSystem string
@@ -537,12 +544,14 @@ type Attributes struct {
 	IntelTurboAvailable string
 }
 
+// Product - Generated from json map[string]interface{}
 type Product struct {
 	ProductFamily string
 	Sku string
 	Attributes Attributes `json:"attributes"`
 }
 
+// ProductSpec - Generated from json map[string]interface{}
 type ProductSpec struct {
 	ServiceCode string
 	Terms Terms
