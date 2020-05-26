@@ -6,7 +6,7 @@ import (
 	"log"
 	"errors"
 	"strings"
-//	"encoding/json"
+	"encoding/json"
 	"reflect"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -27,7 +27,7 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "ec2typer",
+		Use: "ec2matcher",
 		Short: "EC2 Instance Type sourcer",
 	}
 	cobra.OnInitialize(initConfig)
@@ -332,24 +332,36 @@ func reportPricing(types []string) ( map[string]string, error) {
 		}
 		
 		for _, v := range values {
-			/*
-			b, _ := json.Marshal(v)
-			pr := ProductSpec{}
-			_ = json.Unmarshal(b, &pr)
-			fmt.Println(v)
-			fmt.Println("ProductSpec")
-			for _,z := range pr.Terms.OnDemand {
-				for _,v := range z.PriceDimensions {
-					fmt.Println(v.PricePerUnit["USD"])
-				}
+			it, p, e := parsePrice(v)
+			if e != nil {
+				return map[string]string{}, e
 			}
-			*/
-			price := parseMap("USD", v)
-			it := parseMap("instanceType", v)
-			prices[it] = price
+			prices[*it] = *p
 		}
 	}
 	return prices, nil
+}
+
+
+func parsePrice(i map[string]interface{}) (it *string, price *string, e error) {
+	b, err := json.Marshal(i)
+	if err != nil {
+		return nil,nil, err
+	}
+
+	pr := ProductSpec{}
+	err = json.Unmarshal(b, &pr)
+	if err != nil {
+		return nil,nil, err
+	}
+
+	var p string
+	for _, z := range pr.Terms.OnDemand {
+		for _, v := range z.PriceDimensions {
+			p = v.PricePerUnit["USD"]
+		}
+	}
+	return &pr.Product.Attributes.InstanceType, &p, nil
 }
 
 func filterPrices(describer pricing.GetProductsInput, client *pricing.Pricing) (pricingList []aws.JSONValue, e error) {
