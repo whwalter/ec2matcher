@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
-	"sort"
-	"log"
-	"errors"
-	"strings"
-	"strconv"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -27,7 +27,7 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "ec2matcher",
+		Use:   "ec2matcher",
 		Short: "EC2 Instance Type sourcer",
 	}
 	cobra.OnInitialize(initConfig)
@@ -49,12 +49,11 @@ func initConfig() {
 	}
 }
 
-
 func newEC2TypeMatcherCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "types",
+		Use:   "types",
 		Short: "Matches ec2 instance types for desired specs",
-		RunE: matchEC2TypesPrintRunE,
+		RunE:  matchEC2TypesPrintRunE,
 	}
 
 	cmd.PersistentFlags().StringP("type", "t", "", "Source type to match against")
@@ -70,31 +69,31 @@ func matchEC2TypesPrintRunE(cmd *cobra.Command, args []string) error {
 	matchType, err := cmd.Flags().GetString("type")
 	if err != nil {
 		return err
-	}	
+	}
 
 	ram, err := cmd.Flags().GetInt64("ram")
 	if err != nil {
 		return err
-	}	
+	}
 
 	vcpu, err := cmd.Flags().GetInt64("vcpu")
 	if err != nil {
 		return err
-	}	
+	}
 
-	matches,err := matchEC2Types(matchType, ram, vcpu)
+	matches, err := matchEC2Types(matchType, ram, vcpu)
 	if err != nil {
 		return err
 	}
 
 	// []*ec2InstanceTypeInfo
-	for _,v := range matches {
+	for _, v := range matches {
 		fmt.Printf("Name: %s\n  Ram: %d\n  Vcpus: %d\n", *v.InstanceType, *v.MemoryInfo.SizeInMiB, *v.VCpuInfo.DefaultVCpus)
 	}
 	return nil
 }
 
-func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,error) {
+func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo, error) {
 
 	// TODO: split this out and support other match types: Ram, CPU Count
 	if matchType == "" && ram == 0 && vcpu == 0 {
@@ -122,38 +121,38 @@ func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,e
 	}
 
 	if mem == nil && ram != 0 {
-		mem = aws.String(strconv.FormatInt(ram * 1024, 10))
+		mem = aws.String(strconv.FormatInt(ram*1024, 10))
 	}
 	if cpu == nil && vcpu != 0 {
 		cpu = aws.String(strconv.FormatInt(vcpu, 10))
 	}
 
 	matchers := []*ec2.Filter{
-			&ec2.Filter{
-				Name: aws.String("bare-metal"),
-				Values: []*string{
-					aws.String("false"),
-					},
-		  	 }}
+		&ec2.Filter{
+			Name: aws.String("bare-metal"),
+			Values: []*string{
+				aws.String("false"),
+			},
+		}}
 
 	if mem != nil {
 		matchers = append(matchers, &ec2.Filter{
-				Name: aws.String("memory-info.size-in-mib"),
-				Values: []*string{ mem },
-				})
+			Name:   aws.String("memory-info.size-in-mib"),
+			Values: []*string{mem},
+		})
 	}
 
 	if cpu != nil {
 		matchers = append(matchers, &ec2.Filter{
-				Name: aws.String("vcpu-info.default-vcpus"),
-				Values: []*string{ cpu },
-				})
+			Name:   aws.String("vcpu-info.default-vcpus"),
+			Values: []*string{cpu},
+		})
 
 	}
 
 	typeInput := ec2.DescribeInstanceTypesInput{
-		DryRun: aws.Bool(false),
-		Filters: matchers,
+		DryRun:     aws.Bool(false),
+		Filters:    matchers,
 		MaxResults: aws.Int64(5),
 	}
 	err := typeInput.Validate()
@@ -172,10 +171,10 @@ func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,e
 
 func newEC2ZoneMatcherCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "zones",
+		Use:   "zones",
 		Short: "Shows instances in a list available in listed zones",
-		Args: cobra.ExactValidArgs(2),
-		RunE: matchEC2ZonesPrintRunE,
+		Args:  cobra.ExactValidArgs(2),
+		RunE:  matchEC2ZonesPrintRunE,
 	}
 
 	return cmd
@@ -190,8 +189,8 @@ func matchEC2ZonesPrintRunE(cmd *cobra.Command, args []string) error {
 	matches, err := matchEC2Zones(types, zones)
 	if err != nil {
 		return err
-	}	
-	for k := range matches{
+	}
+	for k := range matches {
 		fmt.Println(k)
 	}
 	return nil
@@ -203,21 +202,21 @@ func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, er
 	awsZones := aws.StringSlice(zones)
 
 	offeringFilters := []*ec2.Filter{
-				&ec2.Filter{
-					Name: aws.String("location"),
-					Values: awsZones,
-				},
-				&ec2.Filter{
-					Name: aws.String("instance-type"),
-					Values: awsTypes,
-				},
-			}
+		&ec2.Filter{
+			Name:   aws.String("location"),
+			Values: awsZones,
+		},
+		&ec2.Filter{
+			Name:   aws.String("instance-type"),
+			Values: awsTypes,
+		},
+	}
 
 	offeringInput := ec2.DescribeInstanceTypeOfferingsInput{
-				Filters: offeringFilters,
-				LocationType: aws.String("availability-zone"),
-				MaxResults: aws.Int64(5),
-			}
+		Filters:      offeringFilters,
+		LocationType: aws.String("availability-zone"),
+		MaxResults:   aws.Int64(5),
+	}
 	err := offeringInput.Validate()
 	if err != nil {
 		return validTypes, err
@@ -233,17 +232,17 @@ func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, er
 		// if this is the first match, add an instanceType to the map, else append the location to the list of locations
 		if validTypes[aws.StringValue(v.InstanceType)] == nil {
 			validTypes[aws.StringValue(v.InstanceType)] = &instanceType{
-									Name: aws.StringValue(v.InstanceType),
-									Locations: []string{aws.StringValue(v.Location)},
-									}
+				Name:      aws.StringValue(v.InstanceType),
+				Locations: []string{aws.StringValue(v.Location)},
+			}
 		} else {
-		validTypes[aws.StringValue(v.InstanceType)].Locations = append(validTypes[aws.StringValue(v.InstanceType)].Locations, aws.StringValue(v.Location))
+			validTypes[aws.StringValue(v.InstanceType)].Locations = append(validTypes[aws.StringValue(v.InstanceType)].Locations, aws.StringValue(v.Location))
 		}
 	}
 
 	// If a type isn't available in all desired zones, remove it from the list of options
-	for k,v := range validTypes {
-		if !compareUnsortedStringSlice(zones, v.Locations){
+	for k, v := range validTypes {
+		if !compareUnsortedStringSlice(zones, v.Locations) {
 			delete(validTypes, k)
 		}
 	}
@@ -252,29 +251,28 @@ func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, er
 
 func newEC2PriceMatcherCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "prices",
+		Use:   "prices",
 		Short: "Shows OnDemand pricing for a list of instances",
-		Args: cobra.ExactValidArgs(1),
-		RunE: matchEC2PricesPrintRunE,
+		Args:  cobra.ExactValidArgs(1),
+		RunE:  matchEC2PricesPrintRunE,
 	}
 
 	return cmd
 }
 
-
 func matchEC2PricesPrintRunE(cmd *cobra.Command, args []string) error {
 	types := strings.Split(args[0], ",")
-	prices, err :=  reportPricing(types)
+	prices, err := reportPricing(types)
 	if err != nil {
 		return err
 	}
 
-	for k,v := range prices {
+	for k, v := range prices {
 		fmt.Printf("%s: %s\n", k, v)
 	}
 	return nil
 }
-func reportPricing(types []string) ( map[string]string, error) {
+func reportPricing(types []string) (map[string]string, error) {
 
 	awsSession = session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -286,32 +284,32 @@ func reportPricing(types []string) ( map[string]string, error) {
 	defaultFilters := []*pricing.Filter{
 		&pricing.Filter{
 			Field: aws.String("ServiceCode"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("AmazonEC2"),
 		},
 		&pricing.Filter{
 			Field: aws.String("operatingsystem"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("Linux"),
 		},
 		&pricing.Filter{
 			Field: aws.String("tenancy"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("shared"),
 		},
 		&pricing.Filter{
 			Field: aws.String("preInstalledSw"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("NA"),
 		},
 		&pricing.Filter{
 			Field: aws.String("capacitystatus"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("UnusedCapacityReservation"),
 		},
 		&pricing.Filter{
 			Field: aws.String("location"),
-			Type: ft,
+			Type:  ft,
 			Value: aws.String("US East (N. Virginia)"),
 		},
 	}
@@ -319,17 +317,17 @@ func reportPricing(types []string) ( map[string]string, error) {
 	prices := map[string]string{}
 	for _, t := range types {
 		filters := []*pricing.Filter{
-				&pricing.Filter{
-					Field: aws.String("instancetype"),
-					Type: ft,
-					Value: aws.String(t),
-				},
-			}
+			&pricing.Filter{
+				Field: aws.String("instancetype"),
+				Type:  ft,
+				Value: aws.String(t),
+			},
+		}
 		gpi := pricing.GetProductsInput{
-			Filters: append(filters, defaultFilters...),
+			Filters:       append(filters, defaultFilters...),
 			FormatVersion: aws.String("aws_v1"),
-			ServiceCode: aws.String("AmazonEC2"),
-			}
+			ServiceCode:   aws.String("AmazonEC2"),
+		}
 		err := gpi.Validate()
 		if err != nil {
 			return map[string]string{}, err
@@ -339,7 +337,7 @@ func reportPricing(types []string) ( map[string]string, error) {
 		if err != nil {
 			return map[string]string{}, err
 		}
-		
+
 		for _, v := range values {
 			it, p, e := parsePrice(v)
 			if e != nil {
@@ -351,17 +349,16 @@ func reportPricing(types []string) ( map[string]string, error) {
 	return prices, nil
 }
 
-
 func parsePrice(i map[string]interface{}) (it *string, price *string, e error) {
 	b, err := json.Marshal(i)
 	if err != nil {
-		return nil,nil, err
+		return nil, nil, err
 	}
 
 	pr := ProductSpec{}
 	err = json.Unmarshal(b, &pr)
 	if err != nil {
-		return nil,nil, err
+		return nil, nil, err
 	}
 
 	var p string
@@ -377,8 +374,8 @@ func filterPrices(describer pricing.GetProductsInput, client *pricing.Pricing) (
 	var pl []aws.JSONValue
 	err := client.GetProductsPages(
 		&describer,
-		func(page *pricing.GetProductsOutput, lastPage bool) bool{
-			for _,v := range page.PriceList {
+		func(page *pricing.GetProductsOutput, lastPage bool) bool {
+			for _, v := range page.PriceList {
 				pl = append(pl, v)
 			}
 			if lastPage {
@@ -387,13 +384,13 @@ func filterPrices(describer pricing.GetProductsInput, client *pricing.Pricing) (
 			return true
 		})
 	if err != nil {
-		return pl,err
+		return pl, err
 	}
 	return pl, nil
 }
 
 type instanceType struct {
-	Name string
+	Name      string
 	Locations []string
 }
 
@@ -401,9 +398,9 @@ func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput, client *ec2.E
 	its := []*ec2.InstanceTypeInfo{}
 	err := client.DescribeInstanceTypesPages(
 		&describer,
-		func(page *ec2.DescribeInstanceTypesOutput, lastPage bool) bool{
-			for _,v := range page.InstanceTypes {
-				its = append(its,v)
+		func(page *ec2.DescribeInstanceTypesOutput, lastPage bool) bool {
+			for _, v := range page.InstanceTypes {
+				its = append(its, v)
 			}
 			if lastPage {
 				return false
@@ -411,7 +408,7 @@ func filterInstanceTypes(describer ec2.DescribeInstanceTypesInput, client *ec2.E
 			return true
 		})
 	if err != nil {
-		return its,err
+		return its, err
 	}
 	return its, nil
 }
@@ -420,8 +417,8 @@ func filterInstanceTypeOfferings(describer ec2.DescribeInstanceTypeOfferingsInpu
 	var ito []*ec2.InstanceTypeOffering
 	err := client.DescribeInstanceTypeOfferingsPages(
 		&describer,
-		func(page *ec2.DescribeInstanceTypeOfferingsOutput, lastPage bool) bool{
-			for _,v := range page.InstanceTypeOfferings {
+		func(page *ec2.DescribeInstanceTypeOfferingsOutput, lastPage bool) bool {
+			for _, v := range page.InstanceTypeOfferings {
 				ito = append(ito, v)
 			}
 			if lastPage {
@@ -430,7 +427,7 @@ func filterInstanceTypeOfferings(describer ec2.DescribeInstanceTypeOfferingsInpu
 			return true
 		})
 	if err != nil {
-		return ito,err
+		return ito, err
 	}
 	return ito, nil
 }
@@ -444,8 +441,8 @@ func stringInSlice(s []string, str string) bool {
 	return false
 }
 
-func compareUnsortedStringSlice(a,b []string) bool {
-	if ( a == nil) != ( b == nil) {
+func compareUnsortedStringSlice(a, b []string) bool {
+	if (a == nil) != (b == nil) {
 		return false
 	}
 
@@ -469,10 +466,10 @@ type Terms struct {
 
 // InstanceData - Generated from json map[string]interface{}
 type InstanceData struct {
-	EffectiveDate string
-	OfferTermCode string
+	EffectiveDate   string
+	OfferTermCode   string
 	PriceDimensions map[string]PriceDimensions
-	Sku string
+	Sku             string
 	*TermAttributes
 }
 
@@ -487,13 +484,13 @@ type PriceDimensions struct {
 
 // PriceData - Generated from json map[string]interface{}
 type PriceData struct {
-	AppliesTo []string
-	BeginRange string
-	Description string
-	EndRange string
+	AppliesTo    []string
+	BeginRange   string
+	Description  string
+	EndRange     string
 	PricePerUnit map[string]string
-	RateCode string
-	Unit string
+	RateCode     string
+	Unit         string
 }
 
 // PricePerUnit - Generated from json map[string]interface{}
@@ -504,49 +501,49 @@ type PricePerUnit struct {
 // Attributes - Generated from json map[string]interface{}
 type Attributes struct {
 	EnhancedNetworkingSupported string
-	OperatingSystem string
-	InstanceFamily string
-	IntelAvxAvailable string
-	NetworkPerformance string
-	Tenancy string
-	ClockSpeed string
-	LicenseModel string
-	PhysicalProcessor string
-	Capacitystatus string
-	DedicatedEbsThroughput string
-	Location string
-	ProcessorFeatures string
-	Servicename string
-	CurrentGeneration string
-	Ecu string
-	ProcessorArchitecture string
-	Servicecode string
-	Usagetype string
-	Vcpu string
-	IntelAvx2Available string
-	Memory string
-	PreInstalledSw string
-	Storage string
-	InstanceType string
-	LocationType string
-	NormalizationSizeFactor string
-	Operation string
-	Instancesku string
-	IntelTurboAvailable string
+	OperatingSystem             string
+	InstanceFamily              string
+	IntelAvxAvailable           string
+	NetworkPerformance          string
+	Tenancy                     string
+	ClockSpeed                  string
+	LicenseModel                string
+	PhysicalProcessor           string
+	Capacitystatus              string
+	DedicatedEbsThroughput      string
+	Location                    string
+	ProcessorFeatures           string
+	Servicename                 string
+	CurrentGeneration           string
+	Ecu                         string
+	ProcessorArchitecture       string
+	Servicecode                 string
+	Usagetype                   string
+	Vcpu                        string
+	IntelAvx2Available          string
+	Memory                      string
+	PreInstalledSw              string
+	Storage                     string
+	InstanceType                string
+	LocationType                string
+	NormalizationSizeFactor     string
+	Operation                   string
+	Instancesku                 string
+	IntelTurboAvailable         string
 }
 
 // Product - Generated from json map[string]interface{}
 type Product struct {
 	ProductFamily string
-	Sku string
-	Attributes Attributes `json:"attributes"`
+	Sku           string
+	Attributes    Attributes `json:"attributes"`
 }
 
 // ProductSpec - Generated from json map[string]interface{}
 type ProductSpec struct {
-	ServiceCode string
-	Terms Terms
-	Version string
-	Product Product
+	ServiceCode     string
+	Terms           Terms
+	Version         string
+	Product         Product
 	PublicationDate string
 }
