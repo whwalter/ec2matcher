@@ -58,7 +58,7 @@ func newEC2TypeMatcherCommand() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringP("type", "t", "", "Source type to match against")
-	cmd.PersistentFlags().Int64P("ram", "r", 0, "Ram to match against")
+	cmd.PersistentFlags().Int64P("ram", "r", 0, "Ram in GB to match against")
 	cmd.PersistentFlags().Int64P("vcpu", "c", 0, "vcpu count to match against")
 
 	return cmd
@@ -82,7 +82,6 @@ func matchEC2TypesPrintRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}	
 
-	fmt.Printf("%s %d %d", matchType, ram, vcpu)
 	matches,err := matchEC2Types(matchType, ram, vcpu)
 	if err != nil {
 		return err
@@ -123,7 +122,7 @@ func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,e
 	}
 
 	if mem == nil && ram != 0 {
-		mem = aws.String(strconv.FormatInt(ram, 10))
+		mem = aws.String(strconv.FormatInt(ram * 1024, 10))
 	}
 	if cpu == nil && vcpu != 0 {
 		cpu = aws.String(strconv.FormatInt(vcpu, 10))
@@ -152,7 +151,6 @@ func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,e
 
 	}
 
-	fmt.Println(matchers)
 	typeInput := ec2.DescribeInstanceTypesInput{
 		DryRun: aws.Bool(false),
 		Filters: matchers,
