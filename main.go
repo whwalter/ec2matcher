@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strings"
 	"encoding/json"
-	"reflect"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -452,24 +451,6 @@ func compareUnsortedStringSlice(a,b []string) bool {
 	}
 	return true
 }
-
-func parseMap(name string, blob map[string]interface{}) string {
-	s := ""
-	for k := range blob {
-		if k == name {
-			return blob[k].(string)
-		}
-		v := reflect.ValueOf(blob[k])
-		if v.Kind() == reflect.Map {
-			s = parseMap(name, blob[k].(map[string]interface{}))
-			if s != "" {
-				return s
-			}
-		}
-	}
-	return s
-}
-
 
 // Terms - Generated from json map[string]interface{}
 type Terms struct {
