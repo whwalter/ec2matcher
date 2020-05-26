@@ -6,6 +6,7 @@ import (
 	"log"
 	"errors"
 	"strings"
+	"strconv"
 	"encoding/json"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -57,7 +58,7 @@ func newEC2TypeMatcherCommand() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringP("type", "t", "", "Source type to match against")
-	cmd.PersistentFlags().Int64P("ram", "r", 0, "Ram to match against")
+	cmd.PersistentFlags().Int64P("ram", "r", 0, "Ram in GB to match against")
 	cmd.PersistentFlags().Int64P("vcpu", "c", 0, "vcpu count to match against")
 
 	return cmd
@@ -70,17 +71,18 @@ func matchEC2TypesPrintRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}	
-/*
+
 	ram, err := cmd.Flags().GetInt64("ram")
 	if err != nil {
 		return err
 	}	
-	cpu, err := cmd.Flags().GetInt64("vcpu")
+
+	vcpu, err := cmd.Flags().GetInt64("vcpu")
 	if err != nil {
 		return err
 	}	
-*/
-	matches,err := matchEC2Types(matchType)
+
+	matches,err := matchEC2Types(matchType, ram, vcpu)
 	if err != nil {
 		return err
 	}
@@ -92,61 +94,69 @@ func matchEC2TypesPrintRunE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func matchEC2Types(matchType string) ([]*ec2.InstanceTypeInfo,error) {
+func matchEC2Types(matchType string, ram, vcpu int64) ([]*ec2.InstanceTypeInfo,error) {
 
 	// TODO: split this out and support other match types: Ram, CPU Count
-	mt := aws.String(matchType)
-	typeInput := ec2.DescribeInstanceTypesInput{
-		InstanceTypes: []*string{mt},
+	if matchType == "" && ram == 0 && vcpu == 0 {
+		return []*ec2.InstanceTypeInfo{}, errors.New("At least one of type, ram, or vcpu must be specified")
+	}
+	var mem, cpu *string
+	if matchType != "" {
+		typeInput := ec2.DescribeInstanceTypesInput{}
+		mt := aws.String(matchType)
+		typeInput.SetInstanceTypes([]*string{mt})
+		err := typeInput.Validate()
+		if err != nil {
+			return []*ec2.InstanceTypeInfo{}, err
+		}
+		// err filters for invalid instance type strings
+		dit, err := ec2Client.DescribeInstanceTypes(&typeInput)
+		if err != nil {
+			return []*ec2.InstanceTypeInfo{}, err
+		}
+
+		// Only one instance type is returned for explicit name match
+		primaryType := dit.InstanceTypes[0]
+		mem = aws.String(fmt.Sprint(*primaryType.MemoryInfo.SizeInMiB))
+		cpu = aws.String(fmt.Sprint(*primaryType.VCpuInfo.DefaultVCpus))
 	}
 
-	err := typeInput.Validate()
-	if err != nil {
-		return []*ec2.InstanceTypeInfo{}, err
+	if mem == nil && ram != 0 {
+		mem = aws.String(strconv.FormatInt(ram * 1024, 10))
+	}
+	if cpu == nil && vcpu != 0 {
+		cpu = aws.String(strconv.FormatInt(vcpu, 10))
 	}
 
-	// err filters for invalid instance type strings
-	dit, err := ec2Client.DescribeInstanceTypes(&typeInput)
-	if err != nil {
-		return []*ec2.InstanceTypeInfo{}, err
-	}
-
-	// Only one instance type is returned for explicit name match
-	primaryType := dit.InstanceTypes[0]
-
-	// TODO: add filter toggles: bare-metal, spot
 	matchers := []*ec2.Filter{
-			&ec2.Filter{
-				Name: aws.String("memory-info.size-in-mib"),
-				Values: []*string{
-					aws.String(fmt.Sprint(*primaryType.MemoryInfo.SizeInMiB)),
-					},
-		  	 },
-			&ec2.Filter{
-				Name: aws.String("vcpu-info.default-vcpus"),
-				Values: []*string{
-					aws.String(fmt.Sprint(*primaryType.VCpuInfo.DefaultVCpus)),
-					},
-		  	 },
 			&ec2.Filter{
 				Name: aws.String("bare-metal"),
 				Values: []*string{
 					aws.String("false"),
 					},
-		  	 },
-			&ec2.Filter{
-				Name: aws.String("hypervisor"),
-				Values: []*string{
-					primaryType.Hypervisor,
-					},
-		  	 },
-		   }
-	typeInput = ec2.DescribeInstanceTypesInput{
+		  	 }}
+
+	if mem != nil {
+		matchers = append(matchers, &ec2.Filter{
+				Name: aws.String("memory-info.size-in-mib"),
+				Values: []*string{ mem },
+				})
+	}
+
+	if cpu != nil {
+		matchers = append(matchers, &ec2.Filter{
+				Name: aws.String("vcpu-info.default-vcpus"),
+				Values: []*string{ cpu },
+				})
+
+	}
+
+	typeInput := ec2.DescribeInstanceTypesInput{
 		DryRun: aws.Bool(false),
 		Filters: matchers,
 		MaxResults: aws.Int64(5),
 	}
-	err = typeInput.Validate()
+	err := typeInput.Validate()
 	if err != nil {
 		return []*ec2.InstanceTypeInfo{}, err
 	}
