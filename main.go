@@ -203,6 +203,10 @@ func matchEC2ZonesPrintRunE(cmd *cobra.Command, args []string) error {
 	for k, v := range misses {
 		fmt.Printf("%s: %v\n", k, v.Locations)
 	}
+
+	if len(matches) == 0 && len(misses) == 0 {
+		fmt.Println("No types matched any zones")
+	}
 	return nil
 }
 func matchEC2Zones(types []string, zones []string) (valid, invalid map[string]*instanceType, e error) {
@@ -230,12 +234,12 @@ func matchEC2Zones(types []string, zones []string) (valid, invalid map[string]*i
 	}
 	err := offeringInput.Validate()
 	if err != nil {
-		return validTypes, invalidTypes, nil
+		return validTypes, invalidTypes, err
 	}
 
 	typesInZones, err := filterInstanceTypeOfferings(offeringInput, ec2Client)
 	if err != nil {
-		return validTypes, invalidTypes, nil
+		return validTypes, invalidTypes, err
 	}
 
 	// Populate map of valid instanceTypes

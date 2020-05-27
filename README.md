@@ -54,10 +54,13 @@ Use "ec2matcher [command] --help" for more information about a command.
 	  Vcpus: 48
 
 
-### Get a list of types that are available in all of the given availability zones
-	./ec2matcher zones m5dn.large,m5ad.large us-east-1a,us-east-1b,us-east-1c
-	m5dn.large
-	m5ad.large
+### Get types' availability in a list of zones
+	./ec2matcher zones m4.large,m5dn.large,m5ad.large us-east-1a,us-east-1b,us-east-1c,us-east-1e,us-east-1f
+	Instancs available in all zones:
+	m4.large
+	Instances with limited availability:
+	m5dn.large: [us-east-1a us-east-1f us-east-1c us-east-1b]
+	m5ad.large: [us-east-1a us-east-1c us-east-1f us-east-1b]
 
 ### Get prices for a list of types
 	./ec2matcher prices m5dn.large,m5ad.large,m5d.large,t3.large,t2.large,m4.large,m5n.large,m6g.large,t3a.large,m5.large,m5a.large
