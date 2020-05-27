@@ -186,17 +186,32 @@ func matchEC2ZonesPrintRunE(cmd *cobra.Command, args []string) error {
 	}
 	types := strings.Split(args[0], ",")
 	zones := strings.Split(args[1], ",")
-	matches, err := matchEC2Zones(types, zones)
+	matches, misses, err := matchEC2Zones(types, zones)
 	if err != nil {
 		return err
+	}
+	if len(matches) > 0 {
+		fmt.Println("Instancs available in all zones:")
 	}
 	for k := range matches {
 		fmt.Println(k)
 	}
+
+	if len(misses) > 0 {
+		fmt.Println("Instances with limited availability:")
+	}
+	for k, v := range misses {
+		fmt.Printf("%s: %v\n", k, v.Locations)
+	}
+
+	if len(matches) == 0 && len(misses) == 0 {
+		fmt.Println("No types matched any zones")
+	}
 	return nil
 }
-func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, error) {
+func matchEC2Zones(types []string, zones []string) (valid, invalid map[string]*instanceType, e error) {
 	validTypes := map[string]*instanceType{}
+	invalidTypes := map[string]*instanceType{}
 
 	awsTypes := aws.StringSlice(types)
 	awsZones := aws.StringSlice(zones)
@@ -219,12 +234,12 @@ func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, er
 	}
 	err := offeringInput.Validate()
 	if err != nil {
-		return validTypes, err
+		return validTypes, invalidTypes, err
 	}
 
 	typesInZones, err := filterInstanceTypeOfferings(offeringInput, ec2Client)
 	if err != nil {
-		return validTypes, err
+		return validTypes, invalidTypes, err
 	}
 
 	// Populate map of valid instanceTypes
@@ -240,13 +255,14 @@ func matchEC2Zones(types []string, zones []string) (map[string]*instanceType, er
 		}
 	}
 
-	// If a type isn't available in all desired zones, remove it from the list of options
+	// If a type isn't available in all locations, add it to invalidTypes and remove it from validTypes
 	for k, v := range validTypes {
 		if !compareUnsortedStringSlice(zones, v.Locations) {
 			delete(validTypes, k)
+			invalidTypes[k] = v
 		}
 	}
-	return validTypes, nil
+	return validTypes, invalidTypes, nil
 }
 
 func newEC2PriceMatcherCommand() *cobra.Command {
